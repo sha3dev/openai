@@ -2,15 +2,19 @@
  * imports: externals
  */
 
-import OpenAIClient from "openai";
-import { encode } from "gpt-3-encoder";
 import Logger from "@sha3/logger";
+
+import OpenAIClient from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
+import { encoding_for_model, TiktokenModel } from "tiktoken";
+import { z } from "zod";
 
 /**
  * imports: internals
  */
 
 import CONFIG from "../config";
+import MODEL_PRICING from "./openai/model-pricing";
 
 /**
  * module: initializations
@@ -22,29 +26,62 @@ const logger = new Logger("openai");
  * types
  */
 
-export type CompletionMessage = {
+export type Message = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
-export type ProcessPromptOptions = {
-  temperature?: number;
-  user?: string;
-  replace?: {
-    valueToReplace: string;
-    replaceBy?: string | null;
-  }[];
+export type StructuredJsonOptions = {
+  schema: z.ZodType;
+  name?: string;
 };
 
-export type ProcessPromptResponse = {
+export type ConstructorOptions = {
+  apikey?: string;
+  model?: string;
+  systemPrompt?: string;
+  maxNumberOfInputTokens?: number;
+  maxNumberOfOutputTokens?: number;
+};
+
+export type ProcessOptions = {
+  prompt?: string;
+  temperature?: number;
+  user?: string;
+  model?: string;
+  structuredJson: StructuredJsonOptions;
+};
+
+export type ProcessResponse<T = any> = {
   id: string;
   createdAt: Date;
-  json: any;
+  data: T;
+  rawResponse: any;
   usage: {
     input_tokens: number;
     output_tokens: number;
     total_tokens: number;
+    cost?: {
+      input_cost: number;
+      output_cost: number;
+      total_cost: number;
+      currency: string;
+    };
   };
+};
+
+export type ModelPricing = {
+  input: number;
+  output: number;
+  cachedInput?: number;
+  batchDiscount?: number;
+};
+
+export type ModelCost = {
+  input_cost: number;
+  output_cost: number;
+  total_cost: number;
+  currency: string;
 };
 
 /**
@@ -61,28 +98,57 @@ export default class OpenAI {
    */
 
   private client: OpenAIClient;
-
-  private systemPrompt: string | null = null;
-
-  private systemPromptTokens: number | null = null;
+  private options: ConstructorOptions;
+  private model: TiktokenModel;
+  private systemPrompt?: string;
+  private systemPromptTokens?: number;
 
   /**
    * constructor
    */
 
-  constructor(
-    private options: {
-      apikey: string;
-      systemPrompt?: string;
-      model: string;
-      maxNumberOfInputTokens?: number;
-      maxNumberOfOutputTokens?: number;
+  constructor(options: ConstructorOptions) {
+    const apiKey = options.apikey || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("OpenAI API key not found");
     }
-  ) {
-    this.client = new OpenAIClient({ apiKey: options.apikey });
+    const model = options.model || CONFIG.OPENAI_DEFAULT_MODEL;
+    this.client = new OpenAIClient({ apiKey });
+    this.options = options;
+    if (!MODEL_PRICING.models[model]) {
+      throw new Error(`Model ${model} not found in pricing data`);
+    }
+    this.model = model as TiktokenModel;
+    // Load system prompt if provided
     if (options.systemPrompt) {
       this.loadSystemPrompt(options.systemPrompt);
     }
+  }
+
+  private calculateCost(
+    inputTokens: number,
+    outputTokens: number,
+  ): ModelCost | null {
+    if (!MODEL_PRICING.models) {
+      return null;
+    }
+    // Find the model pricing data
+    const modelPricing = MODEL_PRICING.models[this.model];
+    if (!modelPricing) {
+      logger.warn(`No pricing data found for model: ${this.model}`);
+      return null;
+    }
+    // Calculate costs in dollars per 1M tokens
+    const inputCost = (inputTokens / 1000000) * modelPricing.input;
+    const outputCost = (outputTokens / 1000000) * modelPricing.output;
+    const totalCost = inputCost + outputCost;
+
+    return {
+      input_cost: parseFloat(inputCost.toFixed(6)),
+      output_cost: parseFloat(outputCost.toFixed(6)),
+      total_cost: parseFloat(totalCost.toFixed(6)),
+      currency: "USD",
+    };
   }
 
   /**
@@ -94,39 +160,28 @@ export default class OpenAI {
    */
 
   public loadSystemPrompt(prompt: string) {
-    const tokensLength = encode(prompt).length;
+    const enc = encoding_for_model(this.model);
+    const tokensLength = enc.encode(prompt).length;
+    enc.free();
     logger.debug(`loading system prompt (${tokensLength} tokens)`);
     if (
       this.options.maxNumberOfInputTokens &&
       tokensLength > this.options.maxNumberOfInputTokens
     ) {
       throw new Error(
-        `system prompt is larger than the max number of input tokens allowed`
+        `system prompt is larger than the max number of input tokens allowed`,
       );
     }
     this.systemPromptTokens = tokensLength;
     this.systemPrompt = prompt;
   }
 
-  public async processPrompt(
-    prompt: string,
-    options: ProcessPromptOptions = {}
-  ) {
+  public async process(options: ProcessOptions) {
     let systemPromptToProcess = this.systemPrompt;
     let systemPrompToProcessTokens = this.systemPromptTokens;
-    if (systemPromptToProcess && options?.replace?.length) {
-      options.replace.forEach((i) => {
-        systemPromptToProcess = systemPromptToProcess!.replace(
-          i.valueToReplace,
-          i.replaceBy || ""
-        );
-        if (i.replaceBy) {
-          const replaceTokens = encode(i.replaceBy).length;
-          systemPrompToProcessTokens! += replaceTokens;
-        }
-      });
-    }
-    const tokensLength = encode(prompt).length;
+    const enc = encoding_for_model(this.model);
+    const tokensLength = enc.encode(options.prompt).length;
+    enc.free();
     logger.debug(`loading user prompt (${tokensLength} tokens)`);
     if (this.options.maxNumberOfInputTokens) {
       if (
@@ -134,50 +189,80 @@ export default class OpenAI {
         this.options.maxNumberOfInputTokens
       ) {
         throw new Error(
-          `prompt (system+user) is larger than the max number of input tokens allowed`
+          `prompt (system+user) is larger than the max number of input tokens allowed`,
         );
       }
     }
-    const messages: CompletionMessage[] = [];
+
+    const messages: Message[] = [];
+
     if (systemPromptToProcess) {
       messages.push({ role: "system", content: systemPromptToProcess });
     }
-    messages.push({ role: "user", content: prompt });
-    const completion = await this.client.chat.completions.create({
-      messages,
-      model: this.options.model || CONFIG.OPENAI_DEFAULT_MODEL,
-      temperature: options.temperature || 0,
-      max_tokens: this.options.maxNumberOfOutputTokens,
-      user: options.user,
-    });
-    const choice = completion?.choices?.[0];
-    if (!choice) {
-      throw new Error(`choice not found in completion response`);
-    }
-    if (choice.finish_reason === "length") {
-      throw new Error(`completion finished by limits restrictions`);
-    }
-    if (!choice.message.content) {
-      throw new Error(`completion finished without a text response`);
-    }
-    let json: JSON | null = null;
+    messages.push({ role: "user", content: options.prompt });
+
     try {
-      json = JSON.parse(choice.message.content);
+      const schema = options.structuredJson.schema;
+      const name = options.structuredJson.name || "data";
+
+      const response = await this.client.responses.parse({
+        model: this.model,
+        input: messages,
+        temperature: options.temperature || 0,
+        max_output_tokens: this.options.maxNumberOfOutputTokens,
+        user: options.user,
+        text: {
+          format: zodTextFormat(schema, name),
+        },
+      });
+
+      logger.debug(
+        `request processed successfully (${response.usage.total_tokens} tokens consumed)`,
+      );
+
+      // Calculate usage metrics based on available properties
+      const totalTokens = response.usage.total_tokens;
+
+      // Estimate output tokens if not directly available
+      // This is a fallback since the exact structure may vary
+      let outputTokens = 0;
+      let inputTokens = totalTokens;
+
+      // Use a safer approach to check for output_tokens
+      // First convert to unknown, then to Record<string, unknown> to avoid type errors
+      const usageRecord = response.usage as unknown as Record<string, unknown>;
+      if (
+        usageRecord &&
+        "output_tokens" in usageRecord &&
+        typeof usageRecord.output_tokens === "number"
+      ) {
+        outputTokens = usageRecord.output_tokens;
+        inputTokens = totalTokens - outputTokens;
+      }
+
+      // Calculate usage data
+      const usageData = {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        total_tokens: totalTokens,
+      };
+
+      // Add cost calculation if pricing data is available
+      const costData = this.calculateCost(inputTokens, outputTokens);
+
+      if (costData) {
+        usageData["cost"] = costData;
+      }
+
+      return {
+        id: response.id,
+        createdAt: new Date(),
+        data: response.output_parsed,
+        usage: usageData,
+        rawResponse: response,
+      } as ProcessResponse;
     } catch (e: any) {
-      throw new Error(`completion response not in JSON format`);
+      throw new Error(`Error processing request: ${e.message}`);
     }
-    logger.debug(
-      `prompt processed (${completion.usage!.total_tokens} tokens consumed)`
-    );
-    return {
-      id: completion.id,
-      createdAt: new Date(completion.created),
-      json,
-      usage: {
-        input_tokens: completion.usage!.prompt_tokens,
-        output_tokens: completion.usage!.completion_tokens,
-        total_tokens: completion.usage!.total_tokens,
-      },
-    } as ProcessPromptResponse;
   }
 }

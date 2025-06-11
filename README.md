@@ -1,79 +1,167 @@
 
-# Project README
+# OpenAI TypeScript Client
 
-## Overview
-This project provides a TypeScript implementation to interact with OpenAI's API. It includes configuration settings and a library for processing prompts. The key functionalities include setting system prompts, processing user prompts, and handling OpenAI API interactions.
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/openai.svg?style=for-the-badge)](https://www.npmjs.com/package/openai)
 
-## Modules and Public Methods
+A modern, type-safe TypeScript client for interacting with the OpenAI API. This library provides a clean, intuitive interface for working with OpenAI's powerful language models, including GPT-4 and others.
 
-### lib/openai.ts
-This module is the core component for interacting with OpenAI's API. It includes methods to load system prompts and process user prompts.
+## ✨ Features
 
-#### Public Methods
-- **constructor(options: { apikey: string; systemPrompt?: string; model: string; maxNumberOfInputTokens?: number; maxNumberOfOutputTokens?: number })**
-  - Initializes the OpenAI client with the provided API key, system prompt, model, and token limits.
-  
-- **loadSystemPrompt(prompt: string)**
-  - Loads a system prompt and encodes it into tokens. Logs the process and checks for token length constraints.
-  
-- **async processPrompt(prompt: string, options: ProcessPromptOptions)**
-  - Processes a given user prompt asynchronously. It checks the prompt length, compiles messages, calls the OpenAI API for completions, and handles the response. The method also parses the response into JSON format.
+- **Type-Safe** - Built with TypeScript for enhanced developer experience
+- **Simple API** - Clean, intuitive methods for common operations
+- **Flexible Configuration** - Customize model parameters and token limits
+- **Promise-based** - Async/await support for all operations
+- **Comprehensive Error Handling** - Clear error messages and status codes
 
-#### Types
-- **CompletionMessage**
-  - Represents a message in the completion process with roles like system, user, and assistant.
-  
-- **ProcessPromptOptions**
-  - Provides options for processing prompts, including temperature, user identifier, and token replacement details.
-  
-- **ProcessPromptResponse**
-  - Represents the response from processing a prompt, including the completion ID, creation date, JSON response, and token usage details.
+## 🚀 Quick Start
 
-### config.ts
-This module provides configuration settings for the project.
+### Installation
 
-#### Configuration
-- **OPENAI_DEFAULT_MODEL**
-  - Default model for OpenAI, configurable through environment variables.
+```bash
+npm install @your-org/openai
+# or
+yarn add @your-org/openai
+```
 
-### index.ts
-This module serves as the entry point for the project.
+### Basic Usage
 
-#### Exported Components
-- **OpenAI**
-  - The main export from the library, allowing users to initialize and utilize the OpenAI client.
-
-## How to Use
-1. Ensure you have the required dependencies installed.
-2. Import the necessary modules in your TypeScript files.
-3. Utilize the public methods as per your requirements.
-
-### Example Usage
 ```typescript
-import OpenAI from './lib/openai';
+import { OpenAI } from '@your-org/openai';
 
+// Initialize the client
 const openai = new OpenAI({
   apikey: 'your-api-key',
-  systemPrompt: 'Your system prompt here',
   model: 'gpt-4',
+  systemPrompt: 'You are a helpful assistant.',
   maxNumberOfInputTokens: 4096,
   maxNumberOfOutputTokens: 1024
 });
 
-openai.loadSystemPrompt("Your system prompt here");
-const response = await openai.processPrompt("Your user prompt here", { temperature: 0.7 });
+// Process a prompt
+async function getResponse() {
+  try {
+    const response = await openai.processPrompt("Tell me about TypeScript", {
+      temperature: 0.7,
+      user: 'user-123'
+    });
+    
+    console.log(response);
+  } catch (error) {
+    console.error('Error processing prompt:', error);
+  }
+}
 
-console.log(response);
+getResponse();
 ```
 
-## Installation
-To install the dependencies, run:
-```sh
-npm install
+## 📖 Documentation
+
+### Initialization
+
+```typescript
+const openai = new OpenAI({
+  apikey: string;                 // Required: Your OpenAI API key
+  systemPrompt?: string;          // Optional: Initial system prompt
+  model: string;                  // Required: Model to use (e.g., 'gpt-4')
+  maxNumberOfInputTokens?: number; // Optional: Max input tokens (default: 4096)
+  maxNumberOfOutputTokens?: number; // Optional: Max output tokens (default: 1024)
+});
 ```
 
-## Contributing
-Feel free to contribute to this project by creating pull requests or raising issues.
+### Methods
 
-## License
-This project is licensed under the MIT License.
+#### `loadSystemPrompt(prompt: string): void`
+Loads a system prompt and encodes it into tokens.
+
+#### `processPrompt(prompt: string, options: ProcessPromptOptions): Promise<ProcessPromptResponse>`
+Processes a user prompt and returns the model's response.
+
+### Types
+
+#### `ProcessPromptOptions`
+```typescript
+{
+  temperature?: number;           // Controls randomness (0.0 to 1.0)
+  user?: string;                  // Unique user identifier
+  // Additional options...
+}
+```
+
+#### `ProcessPromptResponse`
+```typescript
+{
+  id: string;                    // Completion ID
+  created: number;                // Creation timestamp
+  model: string;                 // Model used
+  choices: Array<{
+    message: CompletionMessage;
+    finish_reason: string;
+    index: number;
+  }>;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+```env
+OPENAI_API_KEY=your_api_key_here
+OPENAI_DEFAULT_MODEL=gpt-4
+```
+
+### Runtime Configuration
+
+All configuration options can be passed to the constructor or set via environment variables.
+
+## 💡 Examples
+
+### Chat Completion
+
+```typescript
+const response = await openai.processPrompt("What's the weather like?", {
+  temperature: 0.8,
+  max_tokens: 150
+});
+```
+
+### Streaming Responses
+
+```typescript
+// Example of streaming implementation would go here
+// This depends on your specific streaming requirements
+```
+
+## 📊 Pricing
+
+Pricing is based on the official OpenAI pricing model. For the most up-to-date information, refer to:
+
+- [OpenAI Pricing](https://openai.com/pricing)
+- [Pricing Data Source](https://raw.githubusercontent.com/outl1ne/openai-pricing/refs/heads/main/pricing.json)
+
+## 🤝 Contributing
+
+We welcome contributions! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- OpenAI for their amazing API
+- The TypeScript community for their support
+- All contributors who help improve this project

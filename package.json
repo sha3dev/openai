@@ -1,6 +1,6 @@
 {
   "name": "@sha3/openai",
-  "version": "1.0.1",
+  "version": "2.0.0clea",
   "description": "Openai library wrapper",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -9,17 +9,29 @@
   "license": "MIT",
   "homepage": "https://github.com/sha3dev/openai#readme",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "NODE_OPTIONS=--no-warnings tsx --test test/openai.test.ts",
+    "test:watch": "NODE_OPTIONS=--no-warnings tsx watch --test test/openai.test.ts",
     "build": "tsup ./src"
   },
   "dependencies": {
     "@sha3/logger": "^1.0.1",
-    "gpt-3-encoder": "^1.1.4",
-    "openai": "^4.52.7"
+    "openai": "^5.3.0",
+    "tiktoken": "^1.0.13",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "tsup": "^8.1.0",
-    "typescript": "^5.5.3"
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^20.17.10",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "dotenv": "^16.5.0",
+    "eslint": "^8.57.1",
+    "prettier": "^3.4.2",
+    "prettier-eslint": "^16.3.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.2",
+    "typescript": "^4.9.5",
+    "typescript-eslint": "^8.18.2"
   },
   "repository": {
     "type": "git",
